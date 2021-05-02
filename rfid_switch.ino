@@ -51,8 +51,14 @@
 
 byte ssPins[] = {SS_1_PIN, SS_2_PIN};
 
+byte DEFAULT_RFID_TARGET[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 byte rfid1Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 byte rfid2Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+
+byte lastReadUIDRFID1[4] = {0x00, 0x00, 0x00, 0x00};
+byte lastReadUIDRFID2[4] = {0x00, 0x00, 0x00, 0x00};
+
+bool isCardPresent[NR_OF_READERS] = {false, false};
 
 #define RFID_1_TARGET 0
 #define RFID_2_TARGET 1
@@ -62,6 +68,7 @@ MFRC522 mfrc522[NR_OF_READERS];
 bool rfid1Status = false;
 bool rfid2Status = false;
 bool isProgramming = false;
+bool lastProgrammingButtonState = false;
 
 void clearStatuses()
 {
@@ -71,15 +78,17 @@ void clearStatuses()
 
 void readTargetRFIDs()
 {
-  EEPROM.get(EEPROM_RFID_UID_1_ADDR, rfid1Target);
-  EEPROM.get(EEPROM_RFID_UID_2_ADDR, rfid2Target);
+  readRFID(EEPROM_RFID_UID_1_ADDR, rfid1Target);
+  readRFID(EEPROM_RFID_UID_2_ADDR, rfid2Target);
 
   if (DEBUG)
   {
-    Serial.print("RFID_1_TARGET: ");
+    Serial.print("GET RFID_1_TARGET: ");
     dump_byte_array(rfid1Target, RFID_SIZE);
-    Serial.print("RFID_2_TARGET: ");
+    Serial.println();
+    Serial.print("GET RFID_2_TARGET: ");
     dump_byte_array(rfid2Target, RFID_SIZE);
+    Serial.println();
   }
 }
 
@@ -88,14 +97,8 @@ void readTargetRFIDs()
  */
 void setup()
 {
-
   Serial.begin(9600); // Initialize serial communications with the PC
-
-  // while (!Serial)
-  //   ;
-
   readTargetRFIDs();
-
   clearStatuses();
   pinMode(STATUS_PIN_1, OUTPUT);
   pinMode(STATUS_PIN_2, OUTPUT);
@@ -141,6 +144,22 @@ void setTargetUID(byte target, byte *uid)
     setUID(rfid2Target, uid);
     EEPROM.put(EEPROM_RFID_UID_2_ADDR, rfid2Target);
   }
+
+  if (DEBUG)
+  {
+    Serial.print("PUT RFID_1_TARGET: ");
+    dump_byte_array(rfid1Target, RFID_SIZE);
+    Serial.println();
+    Serial.print("PUT RFID_2_TARGET: ");
+    dump_byte_array(rfid2Target, RFID_SIZE);
+    Serial.println();
+  }
+}
+
+void clearTargetUIDs()
+{
+  setTargetUID(RFID_1_TARGET, DEFAULT_RFID_TARGET);
+  setTargetUID(RFID_2_TARGET, DEFAULT_RFID_TARGET);
 }
 
 void setUID(byte *target, byte *uid)
@@ -156,35 +175,61 @@ bool rfidValid(byte *target, byte *uid)
   bool valid = true;
   for (int i = 0; i < RFID_SIZE; i++)
   {
-    Serial.println(valid && ((target[i] | uid[i]) == target[i]));
     valid = valid && ((target[i] | uid[i]) == target[i]);
   }
   return valid;
 }
 
+void clearUID(byte *uid)
+{
+  for (int i = 0; i < RFID_SIZE; i++)
+  {
+    uid[i] = 0x00;
+  }
+}
+
+byte bufferATQA[2];
+byte bufferSize = sizeof(bufferATQA);
+
 void checkRFIDs()
 {
   for (uint8_t i = 0; i < NR_OF_READERS; i++)
   {
+    byte *currentUID = i == RFID_1_TARGET ? lastReadUIDRFID1 : lastReadUIDRFID2;
+
     if (mfrc522[i].PICC_IsNewCardPresent())
     {
-      Serial.println("card present");
-      if (isProgramming)
+      if (mfrc522[i].PICC_ReadCardSerial())
       {
-        setTargetUID(i, mfrc522[i].uid.uidByte);
+        setUID(currentUID, mfrc522[i].uid.uidByte);
+        isCardPresent[i] = true;
+
+        if (isProgramming)
+        {
+          setTargetUID(i, currentUID);
+          if (DEBUG)
+            Serial.println("Stop programming, RFID programmed");
+          isProgramming = false;
+          continue;
+        }
+        mfrc522[i].PICC_WakeupA(bufferATQA, &bufferSize);
       }
-      else if (i == RFID_1_TARGET && rfidValid(rfid1Target, mfrc522[i].uid.uidByte) || i == RFID_2_TARGET && rfidValid(rfid2Target, mfrc522[i].uid.uidByte))
+
+      if (i == RFID_1_TARGET && rfidValid(rfid1Target, currentUID) || i == RFID_2_TARGET && rfidValid(rfid2Target, currentUID))
       {
         toggleRFID(i, true);
       }
 
       // Halt PICC
       mfrc522[i].PICC_HaltA();
+
       // Stop encryption on PCD
       mfrc522[i].PCD_StopCrypto1();
     }
     else
     {
+      isCardPresent[i] = false;
+      clearUID(currentUID);
       toggleRFID(i, false);
     }
   }
@@ -196,11 +241,36 @@ void setStatusPins()
   digitalWrite(STATUS_PIN_2, rfid2Status ? HIGH : LOW);
 }
 
+void checkProgramming()
+{
+  bool isProgrammingButtonDown = digitalRead(PROG_PIN) == HIGH;
+
+  if (isProgrammingButtonDown && !lastProgrammingButtonState)
+  {
+    // if already programming, double programming will clear all RFID UIDs
+    if (isProgramming)
+    {
+      if (DEBUG)
+        Serial.println("already programming, clear uid");
+      clearTargetUIDs();
+      isProgramming = false;
+    }
+    // else start programming
+    else
+    {
+      if (DEBUG)
+        Serial.println("Start programming");
+      isProgramming = true;
+    }
+  }
+  lastProgrammingButtonState = isProgrammingButtonDown;
+}
 /**
  * Main loop.
  */
 void loop()
 {
+  checkProgramming();
   checkRFIDs();
   setStatusPins();
 }
@@ -214,5 +284,13 @@ void dump_byte_array(byte *buffer, byte bufferSize)
   {
     Serial.print(buffer[i] < 0x10 ? " 0" : " ");
     Serial.print(buffer[i], HEX);
+  }
+}
+
+void readRFID(byte addr, byte *target)
+{
+  for (int i = 0; i < RFID_SIZE; i++)
+  {
+    target[i] = EEPROM.read(addr + i);
   }
 }

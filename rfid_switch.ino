@@ -29,27 +29,58 @@
 
 #include <SPI.h>
 #include <MFRC522.h>
+#include <EEPROM.h>
 
-#define RST_PIN D3  // Configurable, see typical pin layout above
-#define SS_1_PIN D8 // Configurable, take a unused pin, only HIGH/LOW required, must be different to SS 2
-#define SS_2_PIN D2 // Configurable, take a unused pin, only HIGH/LOW required, must be different to SS 1
+#define PROG_PIN D0
+#define STATUS_PIN_1 D1
+#define STATUS_PIN_2 D2
+#define SS_1_PIN D3
+#define RST_PIN D4
+// RFID_X USED BY MFRC522 LIB - DO NOT USE
+#define RFID_SCK_PIN D5
+#define RFID_MISO_PIN D6
+#define RFID_MOSI_PIN D7
+#define SS_2_PIN D8
 
-#define STATUS_PIN_1 D0
-#define STATUS_PIN_2 D1
+#define DEBUG 1
 
 #define NR_OF_READERS 2
+#define EEPROM_RFID_UID_1_ADDR 0
+#define EEPROM_RFID_UID_2_ADDR 4
+#define RFID_SIZE 4
 
 byte ssPins[] = {SS_1_PIN, SS_2_PIN};
 
-MFRC522 mfrc522[NR_OF_READERS]; // Create MFRC522 instance.
+byte rfid1Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+byte rfid2Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+
+#define RFID_1_TARGET 0
+#define RFID_2_TARGET 1
+
+MFRC522 mfrc522[NR_OF_READERS];
 
 bool rfid1Status = false;
 bool rfid2Status = false;
+bool isProgramming = false;
 
 void clearStatuses()
 {
   rfid1Status = false;
   rfid2Status = false;
+}
+
+void readTargetRFIDs()
+{
+  EEPROM.get(EEPROM_RFID_UID_1_ADDR, rfid1Target);
+  EEPROM.get(EEPROM_RFID_UID_2_ADDR, rfid2Target);
+
+  if (DEBUG)
+  {
+    Serial.print("RFID_1_TARGET: ");
+    dump_byte_array(rfid1Target, RFID_SIZE);
+    Serial.print("RFID_2_TARGET: ");
+    dump_byte_array(rfid2Target, RFID_SIZE);
+  }
 }
 
 /**
@@ -60,29 +91,35 @@ void setup()
 
   Serial.begin(9600); // Initialize serial communications with the PC
 
+  // while (!Serial)
+  //   ;
+
+  readTargetRFIDs();
+
   clearStatuses();
   pinMode(STATUS_PIN_1, OUTPUT);
   pinMode(STATUS_PIN_2, OUTPUT);
-
-  while (!Serial)
-    ; // Do nothing if no serial port is opened (added for Arduinos based on ATMEGA32U4)
+  pinMode(PROG_PIN, INPUT);
 
   SPI.begin(); // Init SPI bus
 
   for (uint8_t reader = 0; reader < NR_OF_READERS; reader++)
   {
     mfrc522[reader].PCD_Init(ssPins[reader], RST_PIN); // Init each MFRC522 card
-    Serial.print(F("Reader "));
-    Serial.print(reader);
-    Serial.print(F(": "));
-    mfrc522[reader].PCD_DumpVersionToSerial();
+    if (DEBUG)
+    {
+      Serial.print(F("Reader "));
+      Serial.print(reader);
+      Serial.print(F(": "));
+      mfrc522[reader].PCD_DumpVersionToSerial();
+    }
   }
 }
 
 void toggleRFID(uint8_t rfidIndex, bool status)
 {
   // TODO: check against programmed RFIDs
-  if (rfidIndex == 0)
+  if (rfidIndex == RFID_1_TARGET)
   {
     rfid1Status = status;
   }
@@ -92,13 +129,54 @@ void toggleRFID(uint8_t rfidIndex, bool status)
   }
 }
 
-void updateRFIDStatuses()
+void setTargetUID(byte target, byte *uid)
+{
+  if (target == RFID_1_TARGET)
+  {
+    setUID(rfid1Target, uid);
+    EEPROM.put(EEPROM_RFID_UID_1_ADDR, rfid1Target);
+  }
+  else if (target == RFID_2_TARGET)
+  {
+    setUID(rfid2Target, uid);
+    EEPROM.put(EEPROM_RFID_UID_2_ADDR, rfid2Target);
+  }
+}
+
+void setUID(byte *target, byte *uid)
+{
+  for (int i = 0; i < RFID_SIZE; i++)
+  {
+    target[i] = uid[i];
+  }
+}
+
+bool rfidValid(byte *target, byte *uid)
+{
+  bool valid = true;
+  for (int i = 0; i < RFID_SIZE; i++)
+  {
+    Serial.println(valid && ((target[i] | uid[i]) == target[i]));
+    valid = valid && ((target[i] | uid[i]) == target[i]);
+  }
+  return valid;
+}
+
+void checkRFIDs()
 {
   for (uint8_t i = 0; i < NR_OF_READERS; i++)
   {
     if (mfrc522[i].PICC_IsNewCardPresent())
     {
-      toggleRFID(i, true);
+      Serial.println("card present");
+      if (isProgramming)
+      {
+        setTargetUID(i, mfrc522[i].uid.uidByte);
+      }
+      else if (i == RFID_1_TARGET && rfidValid(rfid1Target, mfrc522[i].uid.uidByte) || i == RFID_2_TARGET && rfidValid(rfid2Target, mfrc522[i].uid.uidByte))
+      {
+        toggleRFID(i, true);
+      }
 
       // Halt PICC
       mfrc522[i].PICC_HaltA();
@@ -123,7 +201,7 @@ void setStatusPins()
  */
 void loop()
 {
-  updateRFIDStatuses();
+  checkRFIDs();
   setStatusPins();
 }
 

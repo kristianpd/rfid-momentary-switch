@@ -98,6 +98,9 @@ void readTargetRFIDs()
 void setup()
 {
   Serial.begin(9600); // Initialize serial communications with the PC
+
+  EEPROM.begin(RFID_SIZE * 2); // THIS IS NEEDED FOR NODEMCU  AS IT'S EMULATING EEPROM ON FLASH
+
   readTargetRFIDs();
   clearStatuses();
   pinMode(STATUS_PIN_1, OUTPUT);
@@ -137,13 +140,15 @@ void setTargetUID(byte target, byte *uid)
   if (target == RFID_1_TARGET)
   {
     setUID(rfid1Target, uid);
-    EEPROM.put(EEPROM_RFID_UID_1_ADDR, rfid1Target);
   }
   else if (target == RFID_2_TARGET)
   {
     setUID(rfid2Target, uid);
-    EEPROM.put(EEPROM_RFID_UID_2_ADDR, rfid2Target);
   }
+  EEPROM.put(EEPROM_RFID_UID_1_ADDR, rfid1Target);
+  EEPROM.put(EEPROM_RFID_UID_2_ADDR, rfid2Target);
+
+  EEPROM.commit();
 
   if (DEBUG)
   {

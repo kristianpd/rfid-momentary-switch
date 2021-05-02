@@ -55,11 +55,6 @@ byte DEFAULT_RFID_TARGET[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 byte rfid1Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 byte rfid2Target[4] = {0xFF, 0xFF, 0xFF, 0xFF};
 
-byte lastReadUIDRFID1[4] = {0x00, 0x00, 0x00, 0x00};
-byte lastReadUIDRFID2[4] = {0x00, 0x00, 0x00, 0x00};
-
-bool isCardPresent[NR_OF_READERS] = {false, false};
-
 #define RFID_1_TARGET 0
 #define RFID_2_TARGET 1
 
@@ -185,14 +180,6 @@ bool rfidValid(byte *target, byte *uid)
   return valid;
 }
 
-void clearUID(byte *uid)
-{
-  for (int i = 0; i < RFID_SIZE; i++)
-  {
-    uid[i] = 0x00;
-  }
-}
-
 byte bufferATQA[2];
 byte bufferSize = sizeof(bufferATQA);
 
@@ -200,18 +187,13 @@ void checkRFIDs()
 {
   for (uint8_t i = 0; i < NR_OF_READERS; i++)
   {
-    byte *currentUID = i == RFID_1_TARGET ? lastReadUIDRFID1 : lastReadUIDRFID2;
-
     if (mfrc522[i].PICC_IsNewCardPresent())
     {
       if (mfrc522[i].PICC_ReadCardSerial())
       {
-        setUID(currentUID, mfrc522[i].uid.uidByte);
-        isCardPresent[i] = true;
-
         if (isProgramming)
         {
-          setTargetUID(i, currentUID);
+          setTargetUID(i, mfrc522[i].uid.uidByte);
           if (DEBUG)
             Serial.println("Stop programming, RFID programmed");
           isProgramming = false;
@@ -220,7 +202,8 @@ void checkRFIDs()
         mfrc522[i].PICC_WakeupA(bufferATQA, &bufferSize);
       }
 
-      if (i == RFID_1_TARGET && rfidValid(rfid1Target, currentUID) || i == RFID_2_TARGET && rfidValid(rfid2Target, currentUID))
+      if (i == RFID_1_TARGET && rfidValid(rfid1Target, mfrc522[i].uid.uidByte) ||
+          i == RFID_2_TARGET && rfidValid(rfid2Target, mfrc522[i].uid.uidByte))
       {
         toggleRFID(i, true);
       }
@@ -233,8 +216,6 @@ void checkRFIDs()
     }
     else
     {
-      isCardPresent[i] = false;
-      clearUID(currentUID);
       toggleRFID(i, false);
     }
   }

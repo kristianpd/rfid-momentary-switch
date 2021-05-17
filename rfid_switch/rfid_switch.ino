@@ -87,6 +87,12 @@ void readTargetRFIDs()
   }
 }
 
+void boostAntennaGain() {
+  for (uint8_t reader = 0; reader < NR_OF_READERS; reader++)
+    mfrc522[reader].PCD_SetAntennaGain(mfrc522.RxGain_max);
+  }
+}
+
 /**
  * Initialize.
  */
@@ -95,6 +101,10 @@ void setup()
   Serial.begin(9600); // Initialize serial communications with the PC
 
   EEPROM.begin(RFID_SIZE * 2); // THIS IS NEEDED FOR NODEMCU  AS IT'S EMULATING EEPROM ON FLASH
+
+  // RAMSEY THIS IS THE LINE WE'RE TRYING, IF IT MESSES STUFF UP PUT TWO
+  // // infront of it to comment it out, or delete it!
+  boostAntennaGain();
 
   readTargetRFIDs();
   clearStatuses();

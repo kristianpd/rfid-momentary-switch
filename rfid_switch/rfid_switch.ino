@@ -110,7 +110,7 @@ void readTargetRFIDs()
 
 void boostAntennaGain() {
   for (uint8_t reader = 0; reader < NR_OF_READERS; reader++) {
-    mfrc522[reader].PCD_SetAntennaGain(mfrc522[reader].RxGain_max);
+    mfrc522[reader].PCD_SetAntennaGain(MFRC522::PCD_RxGain::RxGain_max);
   }
 }
 

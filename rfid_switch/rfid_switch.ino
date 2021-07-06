@@ -71,6 +71,27 @@ void clearStatuses()
   rfid2Status = false;
 }
 
+
+void readRFID(byte addr, byte *target)
+{
+  for (int i = 0; i < RFID_SIZE; i++)
+  {
+    target[i] = EEPROM.read(addr + i);
+  }
+}
+
+/**
+ * Helper routine to dump a byte array as hex values to Serial.
+ */
+void dump_byte_array(byte *buffer, byte bufferSize)
+{
+  for (byte i = 0; i < bufferSize; i++)
+  {
+    Serial.print(buffer[i] < 0x10 ? " 0" : " ");
+    Serial.print(buffer[i], HEX);
+  }
+}
+
 void readTargetRFIDs()
 {
   readRFID(EEPROM_RFID_UID_1_ADDR, rfid1Target);
@@ -88,8 +109,8 @@ void readTargetRFIDs()
 }
 
 void boostAntennaGain() {
-  for (uint8_t reader = 0; reader < NR_OF_READERS; reader++)
-    mfrc522[reader].PCD_SetAntennaGain(mfrc522.RxGain_max);
+  for (uint8_t reader = 0; reader < NR_OF_READERS; reader++) {
+    mfrc522[reader].PCD_SetAntennaGain(mfrc522[reader].RxGain_max);
   }
 }
 
@@ -269,24 +290,4 @@ void loop()
   checkProgramming();
   checkRFIDs();
   setStatusPins();
-}
-
-/**
- * Helper routine to dump a byte array as hex values to Serial.
- */
-void dump_byte_array(byte *buffer, byte bufferSize)
-{
-  for (byte i = 0; i < bufferSize; i++)
-  {
-    Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-    Serial.print(buffer[i], HEX);
-  }
-}
-
-void readRFID(byte addr, byte *target)
-{
-  for (int i = 0; i < RFID_SIZE; i++)
-  {
-    target[i] = EEPROM.read(addr + i);
-  }
 }

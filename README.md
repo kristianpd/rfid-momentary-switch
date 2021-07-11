@@ -10,7 +10,7 @@ D0 - Programming pin, momentary switch, pull down resistor
 
 D1 - Status pin 1 (HIGH out if there's an RFID tag on the 1st sensor, LOW otherwise)
 
-D1 - Status pin 2 (HIGH out if there's an RFID tag on the 2nd sensor, LOW otherwise)
+D2 - Status pin 2 (HIGH out if there's an RFID tag on the 2nd sensor, LOW otherwise)
 
 D3 - SDA Pin 1st sensor
 

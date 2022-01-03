@@ -48,6 +48,7 @@
 #define EEPROM_RFID_UID_1_ADDR 0
 #define EEPROM_RFID_UID_2_ADDR 4
 #define RFID_SIZE 4
+#define PROGRAMMING_TIME 1000
 
 byte ssPins[] = {SS_1_PIN, SS_2_PIN};
 
@@ -64,6 +65,7 @@ bool rfid1Status = false;
 bool rfid2Status = false;
 bool isProgramming = false;
 bool lastProgrammingButtonState = false;
+unsigned long programmingStarted = 0;
 
 void clearStatuses()
 {
@@ -261,26 +263,26 @@ void setStatusPins()
 void checkProgramming()
 {
   bool isProgrammingButtonDown = digitalRead(PROG_PIN) == HIGH;
+  unsigned long currentTime = millis();
+  
+  if(isProgrammingButtonDown != lastProgrammingButtonState) {
+    lastProgrammingButtonState = isProgrammingButtonDown;
 
-  if (isProgrammingButtonDown && !lastProgrammingButtonState)
-  {
-    // if already programming, double programming will clear all RFID UIDs
-    if (isProgramming)
-    {
-      if (DEBUG)
-        Serial.println("already programming, clear uid");
-      clearTargetUIDs();
-      isProgramming = false;
-    }
-    // else start programming
-    else
-    {
-      if (DEBUG)
-        Serial.println("Start programming");
-      isProgramming = true;
-    }
+    if(isProgrammingButtonDown) {
+      if (isProgramming)
+      {
+        if (DEBUG)
+          Serial.println("already programming, clear uid");
+        clearTargetUIDs();
+        isProgramming = false;
+        programmingStarted = 0;
+      } else {
+        programmingStarted = currentTime;
+      }
+    } 
+  } else if(isProgrammingButtonDown && !isProgramming) {    
+    isProgramming = programmingStarted > 0 && (currentTime - programmingStarted) > PROGRAMMING_TIME;  
   }
-  lastProgrammingButtonState = isProgrammingButtonDown;
 }
 /**
  * Main loop.
